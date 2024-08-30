@@ -73,7 +73,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 }
 
 // Forward version of 2D covariance matrix computation
-__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float* cov3D, const float* viewmatrix)
+__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float kappa, const float* cov3D, const float* viewmatrix)
 {
 	// The following models the steps outlined by equations 29
 	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
@@ -88,10 +88,30 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	t.x = min(limx, max(-limx, txtz)) * t.z;
 	t.y = min(limy, max(-limy, tytz)) * t.z;
 
-	glm::mat3 J = glm::mat3(
-		focal_x / t.z, 0.0f, -(focal_x * t.x) / (t.z * t.z),
-		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
-		0, 0, 0);
+	// glm::mat3 J = glm::mat3(
+	// 	focal_x / t.z, 0.0f, -(focal_x * t.x) / (t.z * t.z),
+	// 	0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
+	// 	0, 0, 0);
+
+
+	// J with lens distortion
+	float ipx = t.x / t.z;
+	float ipy = t.y / t.z;
+	float I_kpp = 1.f + kappa * ( ipx*ipx + ipy*ipy );
+	
+	float a00 = I_kpp + 2.f*kappa*ipx*ipx;
+	float a10 = 2.f*kappa*ipx*ipy;
+	float a11 = I_kpp + 2.f*kappa*ipy*ipy;
+
+	float focal_x_z = focal_x / t.z;
+	float focal_y_z = focal_y / t.z;
+	
+	glm::mat3 J = glm::mat3( focal_x_z * a00,  focal_x_z * a10,  -focal_x_z * (a00*ipx+a10*ipy),
+								focal_y_z * a10,  focal_y_z * a11,  -focal_y_z * (a10*ipx+a11*ipy),
+								0,    0,    0 );
+	    
+	
+
 
 	glm::mat3 W = glm::mat3(
 		viewmatrix[0], viewmatrix[4], viewmatrix[8],
@@ -99,6 +119,20 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 		viewmatrix[2], viewmatrix[6], viewmatrix[10]);
 
 	glm::mat3 T = W * J;
+
+		// printf("W: [%f, %f, %f], [%f, %f, %f], [%f, %f, %f]\n", W[0][0], W[0][1], W[0][2],
+		// 												  W[1][0], W[1][1], W[1][2],
+		// 												  W[2][0], W[2][1], W[2][2]);
+		// printf("J: [%f, %f, %f], [%f, %f, %f], [%f, %f, %f]\n", J[0][0], J[0][1], J[0][2],
+		// 												  J[1][0], J[1][1], J[1][2],
+		// 												  J[2][0], J[2][1], J[2][2]);
+		// printf("T: [%f, %f, %f], [%f, %f, %f], [%f, %f, %f]\n", T[0][0], T[0][1], T[0][2],
+		// 												  T[1][0], T[1][1], T[1][2],
+		// 												  T[2][0], T[2][1], T[2][2]);
+// W: [0.794911, -0.024846, -0.606217], [-0.021237, 0.997410, -0.068726], [0.606354, 0.067505, 0.792324]													  
+// J: [99.606514, -0.000000, 22.311218], [-0.000000, 99.049454, -2.265479], [0.000000, 0.000000, 0.000000]
+// T: [91.546082, -0.267458, -32.170387], [0.000000, 108.176079, 4.811789], [0.000000, 0.000000, 0.000000]
+
 
 	glm::mat3 Vrk = glm::mat3(
 		cov3D[0], cov3D[1], cov3D[2],
@@ -169,8 +203,10 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	const float* projmatrix,
 	const glm::vec3* cam_pos,
 	const int W, int H,
-	const float tan_fovx, float tan_fovy,
 	const float focal_x, float focal_y,
+	const float principalPoint_x, float principalPoint_y,
+	const float tan_fovx, float tan_fovy,
+	const float kappa,
 	int* radii,
 	float2* points_xy_image,
 	float* depths,
@@ -197,9 +233,9 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Transform point by projecting
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
-	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
-	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
+	// float4 p_hom = transformPoint4x4(p_orig, projmatrix);
+	// float p_w = 1.0f / (p_hom.w + 0.0000001f);
+	// float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
 	// from scaling and rotation parameters. 
@@ -214,8 +250,29 @@ __global__ void preprocessCUDA(int P, int D, int M,
 		cov3D = cov3Ds + idx * 6;
 	}
 
+
+	// bring point from world frame to camera frame
+	float3 t = transformPoint4x3(p_orig, viewmatrix);
+
+	// perform point projection
+	float ipx = t.x / t.z;
+	float ipy = t.y / t.z;
+	float I_kpp = 1.f + kappa * ( ipx*ipx + ipy*ipy );
+
+	float2 point_image = { I_kpp*focal_x*ipx + principalPoint_x,  I_kpp*focal_y*ipy + principalPoint_y };
+
+	// If kappa = 0, this result is the same from NDC projection
+	// float2 point_image_gs = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
+	// float2 error = point_image - point_image_gs;
+	// if (error.x*error.x + error.y*error.y > 0.01f) {
+	// 	printf("point_image_gs(%f, %f),  point_image_fang(%f, %f)\n", point_image_gs.x, point_image_gs.y, point_image.x, point_image.y);
+	// }
+
+
+
 	// Compute 2D screen-space covariance matrix
-	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
+	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, kappa, cov3D, viewmatrix);
+
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
@@ -232,7 +289,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
 	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
-	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
+	
+
 	uint2 rect_min, rect_max;
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
 	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
@@ -440,7 +498,9 @@ void FORWARD::preprocess(int P, int D, int M,
 	const glm::vec3* cam_pos,
 	const int W, int H,
 	const float focal_x, float focal_y,
+	const float principalPoint_x, float principalPoint_y,
 	const float tan_fovx, float tan_fovy,
+	const float kappa,
 	int* radii,
 	float2* means2D,
 	float* depths,
@@ -466,8 +526,10 @@ void FORWARD::preprocess(int P, int D, int M,
 		projmatrix,
 		cam_pos,
 		W, H,
-		tan_fovx, tan_fovy,
 		focal_x, focal_y,
+		principalPoint_x, principalPoint_y,
+		tan_fovx, tan_fovy,
+		kappa,
 		radii,
 		means2D,
 		depths,

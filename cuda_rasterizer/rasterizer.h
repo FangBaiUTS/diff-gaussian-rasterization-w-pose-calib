@@ -46,7 +46,10 @@ namespace CudaRasterizer
 			const float* viewmatrix,
 			const float* projmatrix,
 			const float* cam_pos,
+			const float focal_x, float focal_y,
+			const float principalPoint_x, float principalPoint_y,
 			const float tan_fovx, float tan_fovy,
+			const float kappa,
 			const bool prefiltered,
 			float* out_color,
 			float* out_depth,
@@ -70,7 +73,10 @@ namespace CudaRasterizer
 			const float* projmatrix,
             const float* projmatrix_raw,
             const float* campos,
+			const float focal_x, float focal_y,
+			const float principalPoint_x, float principalPoint_y,
 			const float tan_fovx, float tan_fovy,
+			const float kappa,
 			const int* radii,
 			char* geom_buffer,
 			char* binning_buffer,
@@ -88,6 +94,7 @@ namespace CudaRasterizer
 			float* dL_dscale,
 			float* dL_drot,
 			float* dL_dtau,
+			float* dL_dcalib,
 			bool debug);
 	};
 };

@@ -213,7 +213,10 @@ int CudaRasterizer::Rasterizer::forward(
 	const float* viewmatrix,
 	const float* projmatrix,
 	const float* cam_pos,
+	const float focal_x, float focal_y,
+	const float principalPoint_x, float principalPoint_y,
 	const float tan_fovx, float tan_fovy,
+	const float kappa,
 	const bool prefiltered,
 	float* out_color,
 	float* out_depth,
@@ -222,8 +225,8 @@ int CudaRasterizer::Rasterizer::forward(
 	int* n_touched,
 	bool debug)
 {
-	const float focal_y = height / (2.0f * tan_fovy);
-	const float focal_x = width / (2.0f * tan_fovx);
+	// const float focal_y = height / (2.0f * tan_fovy);
+	// const float focal_x = width / (2.0f * tan_fovx);
 
 	size_t chunk_size = required<GeometryState>(P);
 	char* chunkptr = geometryBuffer(chunk_size);
@@ -263,7 +266,9 @@ int CudaRasterizer::Rasterizer::forward(
 		(glm::vec3*)cam_pos,
 		width, height,
 		focal_x, focal_y,
+		principalPoint_x, principalPoint_y,
 		tan_fovx, tan_fovy,
+		kappa,
 		radii,
 		geomState.means2D,
 		geomState.depths,
@@ -360,7 +365,10 @@ void CudaRasterizer::Rasterizer::backward(
 	const float* projmatrix,
     const float* projmatrix_raw,
     const float* campos,
+	const float focal_x, float focal_y,
+	const float principalPoint_x, float principalPoint_y,
 	const float tan_fovx, float tan_fovy,
+	const float kappa,
 	const int* radii,
 	char* geom_buffer,
 	char* binning_buffer,
@@ -378,6 +386,7 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_dscale,
 	float* dL_drot,
 	float* dL_dtau,
+	float* dL_dcalib,
 	bool debug)
 {
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
@@ -389,8 +398,8 @@ void CudaRasterizer::Rasterizer::backward(
 		radii = geomState.internal_radii;
 	}
 
-	const float focal_y = height / (2.0f * tan_fovy);
-	const float focal_x = width / (2.0f * tan_fovx);
+	// const float focal_y = height / (2.0f * tan_fovy);
+	// const float focal_x = width / (2.0f * tan_fovx);
 
 	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	const dim3 block(BLOCK_X, BLOCK_Y, 1);
@@ -440,7 +449,9 @@ void CudaRasterizer::Rasterizer::backward(
 		projmatrix,
         projmatrix_raw,
 		focal_x, focal_y,
+		principalPoint_x, principalPoint_y,
 		tan_fovx, tan_fovy,
+		kappa,
 		(glm::vec3*)campos,
 		(float3*)dL_dmean2D,
 		dL_dconic,
@@ -451,5 +462,6 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dsh,
 		(glm::vec3*)dL_dscale,
 		(glm::vec4*)dL_drot,
-		dL_dtau), debug)
+		dL_dtau,
+		dL_dcalib), debug)
 }
