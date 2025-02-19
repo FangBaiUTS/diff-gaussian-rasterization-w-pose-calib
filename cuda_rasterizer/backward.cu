@@ -196,6 +196,12 @@ __global__ void computeCov2DCUDA(int P,
     float z1 = 1.0/t.z;
     float x_z = t.x * z1;
     float y_z = t.y * z1;
+
+	float I_kpp = 1.f + kappa * (x_z*x_z + y_z*y_z);
+	// check I_kpp > 0
+	if (I_kpp < 0.0f)
+		return;	
+
     float fx_z = focal_x * z1;
     float fy_z = focal_y * z1;
     
@@ -560,6 +566,10 @@ __global__ void preprocessCUDA(
 	float ipy = m_cam.y / m_cam.z;
 	float irr = ipx*ipx + ipy*ipy;
 	float I_kpp = 1.f + kappa * irr;
+
+	// check I_kpp > 0
+	if (I_kpp < 0.0f)
+		return;
 	
 	float a00 = I_kpp + 2.f*kappa*ipx*ipx;
 	float a10 = 2.f*kappa*ipx*ipy;

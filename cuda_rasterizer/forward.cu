@@ -73,7 +73,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 }
 
 // Forward version of 2D covariance matrix computation
-__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float kappa, const float* cov3D, const float* viewmatrix)
+__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, float kappa, const float* cov3D, const float* viewmatrix)
 {
 	// The following models the steps outlined by equations 29
 	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
@@ -100,15 +100,15 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	float I_kpp = 1.f + kappa * ( ipx*ipx + ipy*ipy );
 	
 	float a00 = I_kpp + 2.f*kappa*ipx*ipx;
-	float a10 = 2.f*kappa*ipx*ipy;
+	float a10 =         2.f*kappa*ipx*ipy;
 	float a11 = I_kpp + 2.f*kappa*ipy*ipy;
 
 	float focal_x_z = focal_x / t.z;
 	float focal_y_z = focal_y / t.z;
 	
-	glm::mat3 J = glm::mat3( focal_x_z * a00,  focal_x_z * a10,  -focal_x_z * (a00*ipx+a10*ipy),
-								focal_y_z * a10,  focal_y_z * a11,  -focal_y_z * (a10*ipx+a11*ipy),
-								0,    0,    0 );
+	glm::mat3 J = glm::mat3(focal_x_z * a00,  focal_x_z * a10,  -focal_x_z * (a00*ipx+a10*ipy),
+							focal_y_z * a10,  focal_y_z * a11,  -focal_y_z * (a10*ipx+a11*ipy),
+							0,    0,    0 );
 	    
 	
 
@@ -259,6 +259,13 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float ipy = t.y / t.z;
 	float I_kpp = 1.f + kappa * ( ipx*ipx + ipy*ipy );
 
+	// check I_kpp > 0
+	if (I_kpp < 0.0f) {
+		printf("Distortion Validity Check: Gaussian idx[%d]: I_kpp = %f \n", idx, I_kpp);
+		return;
+	}
+	
+
 	float2 point_image = { I_kpp*focal_x*ipx + principalPoint_x,  I_kpp*focal_y*ipy + principalPoint_y };
 
 	// If kappa = 0, this result is the same from NDC projection
@@ -278,6 +285,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float det = (cov.x * cov.z - cov.y * cov.y);
 	if (det == 0.0f)
 		return;
+
 	float det_inv = 1.f / det;
 	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
 
