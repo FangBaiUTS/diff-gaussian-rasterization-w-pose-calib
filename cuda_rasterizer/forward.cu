@@ -261,7 +261,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// check I_kpp > 0
 	if (I_kpp < 0.0f) {
-		printf("Distortion Validity Check: Gaussian idx[%d]: I_kpp = %f \n", idx, I_kpp);
+		printf("Distortion Validity Check [forward]: Gaussian idx[%d]: I_kpp = %f \n", idx, I_kpp);
 		return;
 	}
 	

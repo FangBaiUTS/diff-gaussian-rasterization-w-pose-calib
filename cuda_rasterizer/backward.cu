@@ -197,11 +197,6 @@ __global__ void computeCov2DCUDA(int P,
     float x_z = t.x * z1;
     float y_z = t.y * z1;
 
-	float I_kpp = 1.f + kappa * (x_z*x_z + y_z*y_z);
-	// check I_kpp > 0
-	if (I_kpp < 0.0f)
-		return;	
-
     float fx_z = focal_x * z1;
     float fy_z = focal_y * z1;
     
@@ -568,8 +563,10 @@ __global__ void preprocessCUDA(
 	float I_kpp = 1.f + kappa * irr;
 
 	// check I_kpp > 0
-	if (I_kpp < 0.0f)
+	if (I_kpp < 0.0f) {
+		printf("Distortion Validity Check [backward]: Gaussian idx[%d]: I_kpp = %f \n", idx, I_kpp);
 		return;
+	}
 	
 	float a00 = I_kpp + 2.f*kappa*ipx*ipx;
 	float a10 = 2.f*kappa*ipx*ipy;
